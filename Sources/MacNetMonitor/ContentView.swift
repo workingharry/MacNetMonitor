@@ -41,7 +41,7 @@ public struct ContentView: View {
 
     // MARK: - Header
     private var headerSection: some View {
-        HStack {
+        HStack(spacing: 12) {
             Image(systemName: "network")
                 .font(.system(size: 24, weight: .semibold))
                 .foregroundColor(.accentColor)
@@ -61,6 +61,16 @@ public struct ContentView: View {
 
             Spacer()
 
+            // CPU Limiter / Battery Saver Toggle
+            Toggle(isOn: $viewModel.isCPULimiterEnabled) {
+                Label(viewModel.isCPULimiterEnabled ? "CPU Saver: ON" : "CPU Saver: OFF", systemImage: "bolt.batteryblock.fill")
+                    .font(.caption.bold())
+                    .foregroundColor(viewModel.isCPULimiterEnabled ? .orange : .secondary)
+            }
+            .toggleStyle(.button)
+            .controlSize(.regular)
+            .help("Reduces timer wake-ups and throttles background polling to minimize CPU energy impact.")
+
             // Interface Picker
             Picker("Interface:", selection: $viewModel.selectedInterface) {
                 Text("All (Primary)").tag("All")
@@ -69,12 +79,12 @@ public struct ContentView: View {
                 }
             }
             .pickerStyle(.menu)
-            .frame(width: 160)
+            .frame(width: 140)
 
             Button(action: {
                 viewModel.resetSessionStats()
             }) {
-                Label("Reset Session", systemImage: "arrow.counterclockwise")
+                Label("Reset", systemImage: "arrow.counterclockwise")
             }
             .buttonStyle(.bordered)
             .controlSize(.regular)

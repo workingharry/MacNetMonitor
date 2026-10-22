@@ -25,34 +25,66 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         )
         window.center()
         window.delegate = self
+        window.isReleasedWhenClosed = false // Prevent window deallocation on red X close
         window.setFrameAutosaveName("MacNetMonitorMainWindow")
         window.contentView = NSHostingView(rootView: contentView)
         window.title = "Network Usage Monitor"
         window.makeKeyAndOrderFront(nil)
         self.window = window
 
+        updateWindowVisibilityState()
+
         NSApp.setActivationPolicy(.regular)
         NSApp.activate(ignoringOtherApps: true)
     }
 
-    // MARK: - Window Visibility & Occlusion Tracking
+    // MARK: - Robust Window Visibility Resolution
+    private func updateWindowVisibilityState() {
+        guard let win = window else {
+            viewModel?.isWindowVisible = false
+            return
+        }
+
+        let isKeyOrVisible = win.isVisible
+        let isOccluded = !win.occlusionState.contains(.visible)
+        let isMiniaturized = win.isMiniaturized
+
+        let resolved = MonitoringCadencePolicy.resolveWindowVisibility(
+            isKeyOrVisible: isKeyOrVisible,
+            isOccluded: isOccluded,
+            isMiniaturized: isMiniaturized
+        )
+        viewModel?.isWindowVisible = resolved
+    }
+
     func windowDidMiniaturize(_ notification: Notification) {
-        viewModel?.isWindowVisible = false
+        updateWindowVisibilityState()
     }
 
     func windowDidDeminiaturize(_ notification: Notification) {
-        viewModel?.isWindowVisible = true
+        updateWindowVisibilityState()
     }
 
     func windowWillClose(_ notification: Notification) {
         viewModel?.isWindowVisible = false
     }
 
+    func windowShouldClose(_ sender: NSWindow) -> Bool {
+        sender.orderOut(nil)
+        viewModel?.isWindowVisible = false
+        return false // Intercept red button: hide window instead of destroying
+    }
+
     func windowDidChangeOcclusionState(_ notification: Notification) {
-        if let win = window {
-            let isVisible = win.isVisible && win.occlusionState.contains(.visible)
-            viewModel?.isWindowVisible = isVisible
-        }
+        updateWindowVisibilityState()
+    }
+
+    func windowDidBecomeKey(_ notification: Notification) {
+        updateWindowVisibilityState()
+    }
+
+    func windowDidResignKey(_ notification: Notification) {
+        updateWindowVisibilityState()
     }
 
     private func setupMenuBarItem(viewModel: NetworkMonitorViewModel) {
@@ -63,7 +95,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
         button.action = #selector(menuBarButtonClicked)
         button.target = self
 
-        // Observe view model to update menu bar text dynamically with deduplication
         _ = viewModel.$currentDownloadSpeed
             .combineLatest(viewModel.$currentUploadSpeed)
             .receive(on: RunLoop.main)
@@ -81,15 +112,14 @@ final class AppDelegate: NSObject, NSApplicationDelegate, NSWindowDelegate {
     }
 
     @objc private func menuBarButtonClicked() {
-        if let window = self.window {
-            if window.isVisible {
-                window.orderOut(nil)
-                viewModel?.isWindowVisible = false
-            } else {
-                window.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
-                viewModel?.isWindowVisible = true
-            }
+        guard let window = self.window else { return }
+        if window.isVisible {
+            window.orderOut(nil)
+            viewModel?.isWindowVisible = false
+        } else {
+            window.makeKeyAndOrderFront(nil)
+            NSApp.activate(ignoringOtherApps: true)
+            updateWindowVisibilityState()
         }
     }
 }

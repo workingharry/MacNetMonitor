@@ -15,6 +15,14 @@ public final class NetworkMonitorViewModel: ObservableObject {
     @Published public var isConnectedToInternet: Bool = true
     @Published public var connectionType: String = "Wi-Fi / LAN"
 
+    // Persistent CPU Limiter & Energy Saver Mode
+    @Published public var isCPULimiterEnabled: Bool {
+        didSet {
+            UserDefaults.standard.set(isCPULimiterEnabled, forKey: "isCPULimiterEnabled")
+            reconfigureTimer()
+        }
+    }
+
     // Power management state
     public var isWindowVisible: Bool = true {
         didSet { reconfigureTimer() }
@@ -36,6 +44,9 @@ public final class NetworkMonitorViewModel: ObservableObject {
     private let maxHistoryPoints = 60 // Keep 60 seconds of history
 
     public init() {
+        // Load persisted CPU limiter setting
+        self.isCPULimiterEnabled = UserDefaults.standard.bool(forKey: "isCPULimiterEnabled")
+
         setupPathMonitor()
         setupPowerStateObservers()
         startMonitoring()
@@ -122,11 +133,11 @@ public final class NetworkMonitorViewModel: ObservableObject {
         let interval = MonitoringCadencePolicy.interval(
             isWindowVisible: isWindowVisible,
             isLowPowerMode: isLowPowerMode,
-            isScreenAsleep: isScreenAsleep
+            isScreenAsleep: isScreenAsleep,
+            isCPULimiterEnabled: isCPULimiterEnabled
         )
 
         if interval <= 0.0 {
-            // Completely pause timer to save battery when screen is asleep
             timer?.cancel()
             timer = nil
             currentInterval = 0.0
