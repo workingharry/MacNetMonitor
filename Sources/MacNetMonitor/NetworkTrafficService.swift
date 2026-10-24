@@ -13,9 +13,8 @@ public final class NetworkTrafficService: @unchecked Sendable {
 
     public init() {}
 
-    /// Reads 64-bit network traffic counters for all active interfaces via sysctl NET_RT_IFLIST2
-    /// Incorporates Gemini review recommendations: ENOMEM retry, buffer padding, unaligned safety,
-    /// and IFF_UP / IFF_LOOPBACK validation.
+    /// Reads 64-bit network traffic counters for all active interfaces via sysctl NET_RT_IFLIST2.
+    /// Uses zero-syscall direct sockaddr_dl parsing instead of repeated if_indextoname calls.
     public func readCurrentCounters() -> [String: RawInterfaceCounters] {
         var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, 0, NET_RT_IFLIST2, 0]
         var len = 0
@@ -42,7 +41,6 @@ public final class NetworkTrafficService: @unchecked Sendable {
                 success = true
                 break
             } else if errno == ENOMEM {
-                // Buffer grew, re-query and retry
                 var newLen = 0
                 _ = sysctl(&mib, UInt32(mib.count), nil, &newLen, nil, 0)
                 len = max(newLen * 12 / 10, buffer.count * 2)
@@ -57,11 +55,12 @@ public final class NetworkTrafficService: @unchecked Sendable {
 
         let now = CFAbsoluteTimeGetCurrent()
         var results: [String: RawInterfaceCounters] = [:]
+        let minHeaderSize = MemoryLayout<if_msghdr2>.size
+        let totalLen = actualLen
 
         buffer.withUnsafeBytes { rawBuf in
+            guard let basePtr = rawBuf.baseAddress else { return }
             var offset = 0
-            let totalLen = actualLen
-            let minHeaderSize = MemoryLayout<if_msghdr2>.size
 
             while offset + minHeaderSize <= totalLen {
                 let msg = rawBuf.loadUnaligned(fromByteOffset: offset, as: if_msghdr2.self)
@@ -73,17 +72,27 @@ public final class NetworkTrafficService: @unchecked Sendable {
                 let isLoopback = (flags & IFF_LOOPBACK) != 0
 
                 if msg.ifm_type == RTM_IFINFO2 && isUp && !isLoopback {
-                    var ifname = [CChar](repeating: 0, count: Int(IFNAMSIZ))
-                    if_indextoname(UInt32(msg.ifm_index), &ifname)
-                    let name = String(cString: ifname)
+                    // Directly read interface name from sockaddr_dl appended to if_msghdr2 (avoids slow syscalls)
+                    let sdlOffset = offset + minHeaderSize
+                    if sdlOffset + MemoryLayout<sockaddr_dl>.size <= totalLen {
+                        let sdlPtr = basePtr.advanced(by: sdlOffset).assumingMemoryBound(to: sockaddr_dl.self)
+                        let nlen = Int(sdlPtr.pointee.sdl_nlen)
+                        if nlen > 0 && nlen <= Int(IFNAMSIZ) {
+                            let name = withUnsafePointer(to: sdlPtr.pointee.sdl_data) { dataPtr in
+                                dataPtr.withMemoryRebound(to: CChar.self, capacity: nlen) { cstr in
+                                    String(decoding: UnsafeRawBufferPointer(start: cstr, count: nlen), as: UTF8.self)
+                                }
+                            }
 
-                    if !name.isEmpty {
-                        results[name] = RawInterfaceCounters(
-                            name: name,
-                            ibytes: msg.ifm_data.ifi_ibytes,
-                            obytes: msg.ifm_data.ifi_obytes,
-                            timestamp: now
-                        )
+                            if !name.isEmpty {
+                                results[name] = RawInterfaceCounters(
+                                    name: name,
+                                    ibytes: msg.ifm_data.ifi_ibytes,
+                                    obytes: msg.ifm_data.ifi_obytes,
+                                    timestamp: now
+                                )
+                            }
+                        }
                     }
                 }
                 offset += msgLen

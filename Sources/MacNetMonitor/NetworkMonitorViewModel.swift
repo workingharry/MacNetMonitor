@@ -44,7 +44,6 @@ public final class NetworkMonitorViewModel: ObservableObject {
     private let maxHistoryPoints = 60 // Keep 60 seconds of history
 
     public init() {
-        // Load persisted CPU limiter setting
         self.isCPULimiterEnabled = UserDefaults.standard.bool(forKey: "isCPULimiterEnabled")
 
         setupPathMonitor()
@@ -72,7 +71,6 @@ public final class NetworkMonitorViewModel: ObservableObject {
     }
 
     private func setupPowerStateObservers() {
-        // Observe Low Power Mode
         NotificationCenter.default.addObserver(
             forName: NSNotification.Name.NSProcessInfoPowerStateDidChange,
             object: nil,
@@ -83,7 +81,6 @@ public final class NetworkMonitorViewModel: ObservableObject {
             }
         }
 
-        // Observe Display Sleep & Wake
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.screensDidSleepNotification,
             object: nil,
@@ -105,7 +102,6 @@ public final class NetworkMonitorViewModel: ObservableObject {
             }
         }
 
-        // Observe System Sleep & Wake
         NSWorkspace.shared.notificationCenter.addObserver(
             forName: NSWorkspace.willSleepNotification,
             object: nil,
@@ -184,6 +180,7 @@ public final class NetworkMonitorViewModel: ObservableObject {
     private func tick() {
         let currentCounters = trafficService.readCurrentCounters()
         var updatedStats: [InterfaceStats] = []
+        updatedStats.reserveCapacity(currentCounters.count)
 
         var totalDownloadSpeed: Double = 0.0
         var totalUploadSpeed: Double = 0.0
@@ -222,8 +219,10 @@ public final class NetworkMonitorViewModel: ObservableObject {
                 isActive: downSpeed > 0 || upSpeed > 0
             )
 
-            if curr.ibytes > 0 || curr.obytes > 0 || downSpeed > 0 || upSpeed > 0 {
-                updatedStats.append(stat)
+            if isWindowVisible {
+                if curr.ibytes > 0 || curr.obytes > 0 || downSpeed > 0 || upSpeed > 0 {
+                    updatedStats.append(stat)
+                }
             }
 
             if selectedInterface == "All" {
@@ -241,21 +240,15 @@ public final class NetworkMonitorViewModel: ObservableObject {
             }
         }
 
-        updatedStats.sort {
-            if $0.isActive != $1.isActive {
-                return $0.isActive && !$1.isActive
-            }
-            return $0.downloadSpeed > $1.downloadSpeed
-        }
-
-        self.interfaceList = updatedStats
-        self.currentDownloadSpeed = totalDownloadSpeed
-        self.currentUploadSpeed = totalUploadSpeed
-        self.sessionDownloadedBytes = totalSessionDown
-        self.sessionUploadedBytes = totalSessionUp
-
-        // Only record detailed history graph if window is visible (saves memory/churn)
         if isWindowVisible {
+            updatedStats.sort {
+                if $0.isActive != $1.isActive {
+                    return $0.isActive && !$1.isActive
+                }
+                return $0.downloadSpeed > $1.downloadSpeed
+            }
+            self.interfaceList = updatedStats
+
             let point = HistoricalPoint(
                 timestamp: Date(),
                 downloadSpeed: totalDownloadSpeed,
@@ -266,6 +259,11 @@ public final class NetworkMonitorViewModel: ObservableObject {
                 history.removeFirst(history.count - maxHistoryPoints)
             }
         }
+
+        self.currentDownloadSpeed = totalDownloadSpeed
+        self.currentUploadSpeed = totalUploadSpeed
+        self.sessionDownloadedBytes = totalSessionDown
+        self.sessionUploadedBytes = totalSessionUp
 
         previousCounters = currentCounters
     }
