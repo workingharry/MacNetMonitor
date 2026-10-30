@@ -61,16 +61,6 @@ public struct ContentView: View {
 
             Spacer()
 
-            // CPU Limiter / Battery Saver Toggle
-            Toggle(isOn: $viewModel.isCPULimiterEnabled) {
-                Label(viewModel.isCPULimiterEnabled ? "CPU Saver: ON" : "CPU Saver: OFF", systemImage: "bolt.batteryblock.fill")
-                    .font(.caption.bold())
-                    .foregroundColor(viewModel.isCPULimiterEnabled ? .orange : .secondary)
-            }
-            .toggleStyle(.button)
-            .controlSize(.regular)
-            .help("Reduces timer wake-ups and throttles background polling to minimize CPU energy impact.")
-
             // Interface Picker
             Picker("Interface:", selection: $viewModel.selectedInterface) {
                 Text("All (Primary)").tag("All")

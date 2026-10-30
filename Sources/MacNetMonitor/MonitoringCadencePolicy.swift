@@ -3,9 +3,6 @@ import Foundation
 public enum MonitoringCadencePolicy: Sendable {
     /// Returns polling interval in seconds.
     /// If screen is asleep -> 0.0 (indicates timer paused completely).
-    /// If CPU limiter / Energy Saver is explicitly enabled:
-    ///   - window open: 3.0s
-    ///   - window closed: 5.0s
     /// If low power mode is active:
     ///   - window open: 3.0s
     ///   - window closed: 5.0s
@@ -15,14 +12,13 @@ public enum MonitoringCadencePolicy: Sendable {
     public static func interval(
         isWindowVisible: Bool,
         isLowPowerMode: Bool,
-        isScreenAsleep: Bool,
-        isCPULimiterEnabled: Bool = false
+        isScreenAsleep: Bool
     ) -> Double {
         if isScreenAsleep {
             return 0.0
         }
 
-        if isCPULimiterEnabled || isLowPowerMode {
+        if isLowPowerMode {
             return isWindowVisible ? 3.0 : 5.0
         } else {
             return isWindowVisible ? 1.0 : 2.0

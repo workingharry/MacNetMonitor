@@ -3,26 +3,24 @@ import XCTest
 
 final class BackgroundPowerInvariantsTests: XCTestCase {
     
-    // Seam 1: In the background (window/popover closed), memory & disk write frequency must be strictly bounded
+    // Seam 1: In the background (window/popover closed), cadence must be strictly throttled to at least 2.0s
     func testBackgroundCadenceIsThrottled() {
         // Normal power, background
         let intervalBackground = MonitoringCadencePolicy.interval(
             isWindowVisible: false,
             isLowPowerMode: false,
-            isScreenAsleep: false,
-            isCPULimiterEnabled: false
+            isScreenAsleep: false
         )
         // Background must never poll faster than 2.0s
         XCTAssertGreaterThanOrEqual(intervalBackground, 2.0)
         
-        // With CPU saver on
-        let intervalBackgroundSaver = MonitoringCadencePolicy.interval(
+        // Low power mode, background
+        let intervalBackgroundLowPower = MonitoringCadencePolicy.interval(
             isWindowVisible: false,
-            isLowPowerMode: false,
-            isScreenAsleep: false,
-            isCPULimiterEnabled: true
+            isLowPowerMode: true,
+            isScreenAsleep: false
         )
-        XCTAssertGreaterThanOrEqual(intervalBackgroundSaver, 5.0)
+        XCTAssertGreaterThanOrEqual(intervalBackgroundLowPower, 5.0)
     }
     
     // Seam 2: When screen is asleep or Mac is locked, all background work MUST halt (0.0s)
@@ -30,8 +28,7 @@ final class BackgroundPowerInvariantsTests: XCTestCase {
         let sleepInterval = MonitoringCadencePolicy.interval(
             isWindowVisible: false,
             isLowPowerMode: false,
-            isScreenAsleep: true,
-            isCPULimiterEnabled: false
+            isScreenAsleep: true
         )
         XCTAssertEqual(sleepInterval, 0.0, "Timer must be completely cancelled when display is asleep")
     }
