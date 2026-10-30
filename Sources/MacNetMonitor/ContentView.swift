@@ -1,8 +1,15 @@
 import Charts
 import SwiftUI
 
+public enum DisplaySectionMode: String, CaseIterable, Identifiable {
+    case apps = "Apps"
+    case interfaces = "Interfaces"
+    public var id: String { rawValue }
+}
+
 public struct ContentView: View {
     @ObservedObject var viewModel: NetworkMonitorViewModel
+    @State private var selectedDisplayMode: DisplaySectionMode = .apps
 
     public init(viewModel: NetworkMonitorViewModel) {
         self.viewModel = viewModel
@@ -30,8 +37,8 @@ public struct ContentView: View {
                     // Session Total Summary
                     sessionSummarySection
 
-                    // Detailed Per-Interface Table
-                    interfacesSection
+                    // Detailed Apps & Interfaces Breakdown Section
+                    breakdownSection
                 }
                 .padding(20)
             }
@@ -264,83 +271,210 @@ public struct ContentView: View {
         .background(RoundedRectangle(cornerRadius: 10).fill(Color(NSColor.controlBackgroundColor).opacity(0.6)))
     }
 
-    // MARK: - Interfaces Table
-    private var interfacesSection: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text("Network Interfaces Breakdown")
-                .font(.headline)
+    // MARK: - Apps & Interfaces Breakdown Section
+    private var breakdownSection: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack {
+                Text(selectedDisplayMode == .apps ? "Applications Network Usage" : "Network Interfaces Breakdown")
+                    .font(.headline)
 
-            VStack(spacing: 8) {
-                // Table Header
-                HStack {
-                    Text("Interface")
-                        .font(.caption.bold())
-                        .frame(width: 180, alignment: .leading)
-                    Text("Down Speed")
-                        .font(.caption.bold())
-                        .frame(width: 90, alignment: .trailing)
-                    Text("Up Speed")
-                        .font(.caption.bold())
-                        .frame(width: 90, alignment: .trailing)
-                    Text("Lifetime In")
-                        .font(.caption.bold())
-                        .frame(width: 100, alignment: .trailing)
-                    Text("Lifetime Out")
-                        .font(.caption.bold())
-                        .frame(width: 100, alignment: .trailing)
+                Spacer()
+
+                // Mode Picker (Apps / Programs vs Interfaces)
+                Picker("", selection: $selectedDisplayMode) {
+                    Text("Apps / Programs").tag(DisplaySectionMode.apps)
+                    Text("Interfaces").tag(DisplaySectionMode.interfaces)
                 }
-                .foregroundColor(.secondary)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 4)
+                .pickerStyle(.segmented)
+                .frame(width: 200)
+            }
 
-                Divider()
+            if selectedDisplayMode == .apps {
+                appsTableView
+            } else {
+                interfacesTableView
+            }
+        }
+        .padding(16)
+        .background(RoundedRectangle(cornerRadius: 12).fill(Color(NSColor.controlBackgroundColor)))
+    }
 
-                ForEach(viewModel.interfaceList) { iface in
+    // MARK: - Applications Table View
+    private var appsTableView: some View {
+        VStack(spacing: 8) {
+            // Table Header
+            HStack {
+                Text("Application / Program")
+                    .font(.caption.bold())
+                    .frame(width: 200, alignment: .leading)
+                Text("Down Speed")
+                    .font(.caption.bold())
+                    .frame(width: 90, alignment: .trailing)
+                Text("Up Speed")
+                    .font(.caption.bold())
+                    .frame(width: 90, alignment: .trailing)
+                Text("Total Received")
+                    .font(.caption.bold())
+                    .frame(width: 95, alignment: .trailing)
+                Text("Total Sent")
+                    .font(.caption.bold())
+                    .frame(width: 95, alignment: .trailing)
+            }
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+
+            Divider()
+
+            if viewModel.processList.isEmpty {
+                VStack(spacing: 8) {
+                    ProgressView()
+                        .scaleEffect(0.8)
+                    Text("Scanning active applications traffic...")
+                        .font(.caption)
+                        .foregroundColor(.secondary)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 24)
+            } else {
+                ForEach(viewModel.processList) { proc in
                     HStack {
                         HStack(spacing: 8) {
                             Circle()
-                                .fill(iface.isActive ? Color.green : Color.gray.opacity(0.5))
+                                .fill(proc.isActive ? Color.green : Color.gray.opacity(0.5))
                                 .frame(width: 7, height: 7)
-                            VStack(alignment: .leading, spacing: 1) {
-                                Text(iface.name)
-                                    .font(.system(.body, design: .monospaced).bold())
-                                Text(iface.displayName)
-                                    .font(.caption2)
-                                    .foregroundColor(.secondary)
-                            }
+
+                            Image(systemName: iconName(for: proc.name))
+                                .font(.system(size: 14))
+                                .foregroundColor(.accentColor)
+                                .frame(width: 18)
+
+                            Text(proc.name)
+                                .font(.system(.body, design: .rounded).weight(.medium))
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                         }
-                        .frame(width: 180, alignment: .leading)
+                        .frame(width: 200, alignment: .leading)
 
-                        Text(TrafficFormatter.formatSpeed(iface.downloadSpeed))
+                        Text(TrafficFormatter.formatSpeed(proc.downloadSpeed))
                             .font(.system(.body, design: .monospaced))
-                            .foregroundColor(iface.downloadSpeed > 0 ? .blue : .primary)
+                            .foregroundColor(proc.downloadSpeed > 0 ? .blue : .primary)
                             .frame(width: 90, alignment: .trailing)
 
-                        Text(TrafficFormatter.formatSpeed(iface.uploadSpeed))
+                        Text(TrafficFormatter.formatSpeed(proc.uploadSpeed))
                             .font(.system(.body, design: .monospaced))
-                            .foregroundColor(iface.uploadSpeed > 0 ? .purple : .primary)
+                            .foregroundColor(proc.uploadSpeed > 0 ? .purple : .primary)
                             .frame(width: 90, alignment: .trailing)
 
-                        Text(TrafficFormatter.formatBytes(iface.rxBytesTotal))
+                        Text(TrafficFormatter.formatBytes(proc.rxBytesTotal))
                             .font(.system(.footnote, design: .monospaced))
                             .foregroundColor(.secondary)
-                            .frame(width: 100, alignment: .trailing)
+                            .frame(width: 95, alignment: .trailing)
 
-                        Text(TrafficFormatter.formatBytes(iface.txBytesTotal))
+                        Text(TrafficFormatter.formatBytes(proc.txBytesTotal))
                             .font(.system(.footnote, design: .monospaced))
                             .foregroundColor(.secondary)
-                            .frame(width: 100, alignment: .trailing)
+                            .frame(width: 95, alignment: .trailing)
                     }
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
                     .background(
                         RoundedRectangle(cornerRadius: 6)
-                            .fill(iface.isActive ? Color.accentColor.opacity(0.06) : Color.clear)
+                            .fill(proc.isActive ? Color.accentColor.opacity(0.06) : Color.clear)
                     )
                 }
             }
         }
-        .padding(16)
-        .background(RoundedRectangle(cornerRadius: 12).fill(Color(NSColor.controlBackgroundColor)))
+    }
+
+    // MARK: - Interfaces Table View
+    private var interfacesTableView: some View {
+        VStack(spacing: 8) {
+            // Table Header
+            HStack {
+                Text("Interface")
+                    .font(.caption.bold())
+                    .frame(width: 180, alignment: .leading)
+                Text("Down Speed")
+                    .font(.caption.bold())
+                    .frame(width: 90, alignment: .trailing)
+                Text("Up Speed")
+                    .font(.caption.bold())
+                    .frame(width: 90, alignment: .trailing)
+                Text("Lifetime In")
+                    .font(.caption.bold())
+                    .frame(width: 100, alignment: .trailing)
+                Text("Lifetime Out")
+                    .font(.caption.bold())
+                    .frame(width: 100, alignment: .trailing)
+            }
+            .foregroundColor(.secondary)
+            .padding(.horizontal, 10)
+            .padding(.vertical, 4)
+
+            Divider()
+
+            ForEach(viewModel.interfaceList) { iface in
+                HStack {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(iface.isActive ? Color.green : Color.gray.opacity(0.5))
+                            .frame(width: 7, height: 7)
+                        VStack(alignment: .leading, spacing: 1) {
+                            Text(iface.name)
+                                .font(.system(.body, design: .monospaced).bold())
+                            Text(iface.displayName)
+                                .font(.caption2)
+                                .foregroundColor(.secondary)
+                        }
+                    }
+                    .frame(width: 180, alignment: .leading)
+
+                    Text(TrafficFormatter.formatSpeed(iface.downloadSpeed))
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundColor(iface.downloadSpeed > 0 ? .blue : .primary)
+                        .frame(width: 90, alignment: .trailing)
+
+                    Text(TrafficFormatter.formatSpeed(iface.uploadSpeed))
+                        .font(.system(.body, design: .monospaced))
+                        .foregroundColor(iface.uploadSpeed > 0 ? .purple : .primary)
+                        .frame(width: 90, alignment: .trailing)
+
+                    Text(TrafficFormatter.formatBytes(iface.rxBytesTotal))
+                        .font(.system(.footnote, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(width: 100, alignment: .trailing)
+
+                    Text(TrafficFormatter.formatBytes(iface.txBytesTotal))
+                        .font(.system(.footnote, design: .monospaced))
+                        .foregroundColor(.secondary)
+                        .frame(width: 100, alignment: .trailing)
+                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 6)
+                .background(
+                    RoundedRectangle(cornerRadius: 6)
+                        .fill(iface.isActive ? Color.accentColor.opacity(0.06) : Color.clear)
+                )
+            }
+        }
+    }
+
+    private func iconName(for processName: String) -> String {
+        if processName.contains("Chrome") {
+            return "globe"
+        } else if processName.contains("Antigravity") {
+            return "sparkles"
+        } else if processName.contains("Safari") {
+            return "safari"
+        } else if processName.contains("VPN") || processName.contains("Surfshark") {
+            return "shield.lefthalf.filled"
+        } else if processName.contains("System") {
+            return "gearshape"
+        } else if processName.contains("TradingView") {
+            return "chart.xyaxis.line"
+        } else {
+            return "app.dashed"
+        }
     }
 }

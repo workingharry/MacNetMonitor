@@ -8,6 +8,8 @@ A high-performance native macOS internet and network usage monitoring applicatio
 - **Real-Time Bandwidth Speedometer**: Live download and upload speeds (B/s, KB/s, MB/s, GB/s) calculated per second.
 - **Interactive Apple Charts**: 60-second real-time historical bandwidth graph with separate download and upload streams and smooth gradient fills.
 - **Session Data Tracker**: Tracks total data transferred (Downloaded & Uploaded) in the current session with a one-click session reset.
+- **Per-Application & Process Breakdown**: Live breakdown of network consumption per running app (e.g., Google Chrome, Antigravity, Safari, Surfshark VPN, macOS System Services) with automatic helper process grouping and zero-overhead telemetry.
+- **Dynamic View Toggle**: Switch effortlessly between the **Apps / Programs** breakdown and the hardware/virtual **Interfaces** breakdown.
 - **Multi-Interface Breakdown**: Inspects all active physical and virtual interfaces (`en0`, `en1`, `utun` VPNs, AirDrop `awdl0`, etc.) with lifetime total byte counts and current status.
 - **Dynamic Menu Bar Item**: Shows live download/upload throughput right on your macOS menu bar with click-to-toggle window behavior.
 - **Robust & Resilient**: Implements dynamic buffer headroom with `ENOMEM` retries, unaligned byte loading, and sleep/wake protection.
@@ -45,7 +47,9 @@ A high-performance native macOS internet and network usage monitoring applicatio
 ## 📐 Architecture
 
 - `NetworkTrafficService.swift`: Safe C-interop layer that reads 64-bit kernel counters via `sysctl NET_RT_IFLIST2`.
-- `NetworkMonitorViewModel.swift`: `@MainActor` observable view model with 1Hz polling, throughput calculations, session tracking, and `NWPathMonitor` connectivity status.
+- `ProcessTrafficService.swift`: Non-root zero-overhead per-process socket statistics parser using native macOS `nettop`, with intelligent helper aggregation.
+- `ProcessTrafficStats.swift`: Data models and attribution types for per-application telemetry.
+- `NetworkMonitorViewModel.swift`: `@MainActor` observable view model with adaptive cadence, window-visibility gating, throughput calculations, session tracking, and `NWPathMonitor` connectivity status.
 - `ContentView.swift`: SwiftUI user interface with Apple Charts, speed cards, and interface table.
 - `TrafficFormatter.swift`: Formatting utilities for byte values and transfer rates.
 - `MacNetMonitor.swift`: App entry point configuring the macOS menu bar status item and main application window.

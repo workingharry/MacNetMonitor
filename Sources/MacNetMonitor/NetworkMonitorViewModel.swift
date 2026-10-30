@@ -11,13 +11,19 @@ public final class NetworkMonitorViewModel: ObservableObject {
     @Published public var sessionUploadedBytes: UInt64 = 0
     @Published public var selectedInterface: String = "All"
     @Published public var interfaceList: [InterfaceStats] = []
+    @Published public var processList: [ProcessTrafficStats] = []
     @Published public var history: [HistoricalPoint] = []
     @Published public var isConnectedToInternet: Bool = true
     @Published public var connectionType: String = "Wi-Fi / LAN"
 
     // Power management state
     public var isWindowVisible: Bool = true {
-        didSet { reconfigureTimer() }
+        didSet {
+            if !isWindowVisible {
+                previousProcessCounters.removeAll()
+            }
+            reconfigureTimer()
+        }
     }
     public var isScreenAsleep: Bool = false {
         didSet { reconfigureTimer() }
@@ -27,12 +33,14 @@ public final class NetworkMonitorViewModel: ObservableObject {
     }
 
     private let trafficService = NetworkTrafficService()
+    private let processService = ProcessTrafficService()
     private let pathMonitor = NWPathMonitor()
     private let pathMonitorQueue = DispatchQueue(label: "com.macnetmonitor.pathmonitor")
     private var timer: AnyCancellable?
     private var currentInterval: Double = 1.0
     private var previousCounters: [String: RawInterfaceCounters] = [:]
     private var sessionBaselineCounters: [String: (ibytes: UInt64, obytes: UInt64)] = [:]
+    private var previousProcessCounters: [String: RawProcessCounters] = [:]
     private let maxHistoryPoints = 60 // Keep 60 seconds of history
 
     public init() {
@@ -238,6 +246,9 @@ public final class NetworkMonitorViewModel: ObservableObject {
             }
             self.interfaceList = updatedStats
 
+            // Fetch per-process telemetry only when window is open to avoid background battery drain
+            updateProcessStats()
+
             let point = HistoricalPoint(
                 timestamp: Date(),
                 downloadSpeed: totalDownloadSpeed,
@@ -255,5 +266,51 @@ public final class NetworkMonitorViewModel: ObservableObject {
         self.sessionUploadedBytes = totalSessionUp
 
         previousCounters = currentCounters
+    }
+
+    private func updateProcessStats() {
+        let currentProcessCounters = processService.fetchCurrentProcessCounters()
+        var updatedProcesses: [ProcessTrafficStats] = []
+        updatedProcesses.reserveCapacity(currentProcessCounters.count)
+
+        for (name, curr) in currentProcessCounters {
+            var downSpeed: Double = 0.0
+            var upSpeed: Double = 0.0
+
+            if let prev = previousProcessCounters[name] {
+                let timeDelta = curr.timestamp - prev.timestamp
+                if timeDelta > 0.05 && timeDelta < 5.0 {
+                    let rxDelta = curr.bytesIn >= prev.bytesIn ? curr.bytesIn - prev.bytesIn : 0
+                    let txDelta = curr.bytesOut >= prev.bytesOut ? curr.bytesOut - prev.bytesOut : 0
+                    downSpeed = Double(rxDelta) / timeDelta
+                    upSpeed = Double(txDelta) / timeDelta
+                }
+            }
+
+            let stat = ProcessTrafficStats(
+                name: name,
+                rxBytesTotal: curr.bytesIn,
+                txBytesTotal: curr.bytesOut,
+                downloadSpeed: downSpeed,
+                uploadSpeed: upSpeed,
+                isActive: downSpeed > 0 || upSpeed > 0
+            )
+            updatedProcesses.append(stat)
+        }
+
+        updatedProcesses.sort {
+            if $0.isActive != $1.isActive {
+                return $0.isActive && !$1.isActive
+            }
+            let sum0 = $0.downloadSpeed + $0.uploadSpeed
+            let sum1 = $1.downloadSpeed + $1.uploadSpeed
+            if sum0 != sum1 {
+                return sum0 > sum1
+            }
+            return ($0.rxBytesTotal + $0.txBytesTotal) > ($1.rxBytesTotal + $1.txBytesTotal)
+        }
+
+        self.processList = updatedProcesses
+        self.previousProcessCounters = currentProcessCounters
     }
 }
